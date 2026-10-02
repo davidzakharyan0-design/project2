@@ -1,6 +1,6 @@
 [project]
 name = "primitive-db"
-version = "0.2.0"
+version = "0.3.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 project = "primitive_db.main:main"
+database = "primitive_db.main:main"
 
 [build-system]
 requires = ["uv_build>=0.12.21,<0.13.0"]

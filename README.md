@@ -23,3 +23,10 @@ uv run python -m primitive_db.main
 uv build
 uvx twine check dist/*
 ```
+
+## Демонстрация
+
+Установка пакета, создание таблицы, проверка сохранения после
+перезапуска и удаление таблицы:
+
+[![Демонстрация](https://asciinema.org/a/7xphEuQOQqIFrmdz.svg)](https://asciinema.org/a/7xphEuQOQqIFrmdz)
