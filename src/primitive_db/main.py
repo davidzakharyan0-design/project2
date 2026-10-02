@@ -4,6 +4,7 @@ from primitive_db.engine import run
 
 
 def main():
+    """Запускает консольный интерфейс базы данных."""
     run()
 
 

@@ -1,10 +1,13 @@
 import json
-from pathlib import Path
+import os
+
+from primitive_db.constants import DATA_DIR, FILE_ENCODING, JSON_INDENT
 
 
 def load_metadata(filepath):
+    """Читает метаданные; для отсутствующего файла возвращает словарь."""
     try:
-        with open(filepath, encoding="utf-8") as file:
+        with open(filepath, encoding=FILE_ENCODING) as file:
             data = json.load(file)
     except FileNotFoundError:
         return {}
@@ -22,20 +25,23 @@ def load_metadata(filepath):
 
 
 def save_metadata(filepath, data):
-    with open(filepath, "w", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, indent=4)
+    """Сохраняет переданные данные в JSON-файл."""
+    with open(filepath, "w", encoding=FILE_ENCODING) as file:
+        json.dump(data, file, ensure_ascii=False, indent=JSON_INDENT)
         file.write("\n")
 
 
 def table_path(table_name):
+    """Возвращает безопасный относительный путь к файлу таблицы."""
     if not isinstance(table_name, str) or not table_name.isidentifier():
         raise ValueError(f"Некорректное имя таблицы: {table_name}.")
-    return Path("data") / f"{table_name}.json"
+    return os.path.join(DATA_DIR, f"{table_name}.json")
 
 
 def load_table_data(table_name):
+    """Читает список записей таблицы или возвращает пустой список."""
     try:
-        with table_path(table_name).open(encoding="utf-8") as file:
+        with open(table_path(table_name), encoding=FILE_ENCODING) as file:
             data = json.load(file)
     except FileNotFoundError:
         return []
@@ -45,10 +51,15 @@ def load_table_data(table_name):
 
 
 def save_table_data(table_name, data):
+    """Создаёт каталог данных и сохраняет записи таблицы."""
     path = table_path(table_name)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    os.makedirs(DATA_DIR, exist_ok=True)
     save_metadata(path, data)
 
 
 def delete_table_data(table_name):
-    table_path(table_name).unlink(missing_ok=True)
+    """Удаляет файл таблицы, если он существует."""
+    try:
+        os.remove(table_path(table_name))
+    except FileNotFoundError:
+        pass
