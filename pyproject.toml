@@ -1,13 +1,15 @@
 [project]
 name = "primitive-db"
-version = "0.1.0"
+version = "0.2.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
     { name = "DavidZakharyan", email = "71030008+DavidZakharyan@users.noreply.github.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "prompt>=0.4.1",
+]
 
 [project.scripts]
 project = "primitive_db.main:main"
@@ -15,3 +17,17 @@ project = "primitive_db.main:main"
 [build-system]
 requires = ["uv_build>=0.12.21,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = ["venv", ".venv", "dist", "__pycache__"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = []
