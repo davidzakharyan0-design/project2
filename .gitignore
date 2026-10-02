@@ -7,3 +7,4 @@ dist/
 .DS_Store
 db_meta.json
 *.cast
+data/
