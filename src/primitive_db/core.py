@@ -1,13 +1,24 @@
+import json
+from copy import deepcopy
+
+from primitive_db.decorators import (
+    confirm_action,
+    create_cacher,
+    handle_db_errors,
+    log_time,
+)
 from primitive_db.utils import load_table_data
 
 SUPPORTED_TYPES = {"int", "str", "bool"}
 
 
+@handle_db_errors
 def validate_name(name):
     if not isinstance(name, str) or not name.isidentifier():
         raise ValueError(f"Некорректное значение: {name}. Попробуйте снова.")
 
 
+@handle_db_errors
 def create_table(metadata, table_name, columns):
     validate_name(table_name)
 
@@ -55,6 +66,8 @@ def create_table(metadata, table_name, columns):
     return metadata
 
 
+@handle_db_errors
+@confirm_action("удаление таблицы")
 def drop_table(metadata, table_name):
     validate_name(table_name)
 
@@ -65,6 +78,7 @@ def drop_table(metadata, table_name):
     return metadata
 
 
+@handle_db_errors
 def list_tables(metadata):
     return sorted(metadata)
 
@@ -72,6 +86,7 @@ def list_tables(metadata):
 PYTHON_TYPES = {"int": int, "str": str, "bool": bool}
 
 
+@handle_db_errors
 def get_schema(metadata, table_name):
     validate_name(table_name)
     if table_name not in metadata:
@@ -79,6 +94,7 @@ def get_schema(metadata, table_name):
     return dict(column.split(":") for column in metadata[table_name])
 
 
+@handle_db_errors
 def validate_fields(schema, fields, allow_id=True):
     for name, value in fields.items():
         if name not in schema:
@@ -92,6 +108,7 @@ def validate_fields(schema, fields, allow_id=True):
             )
 
 
+@handle_db_errors
 def validate_table_data(schema, table_data):
     ids = set()
     for row in table_data:
@@ -103,6 +120,8 @@ def validate_table_data(schema, table_data):
         ids.add(row["ID"])
 
 
+@handle_db_errors
+@log_time
 def insert(metadata, table_name, values):
     schema = get_schema(metadata, table_name)
     columns = [name for name in schema if name != "ID"]
@@ -117,6 +136,7 @@ def insert(metadata, table_name, values):
     return table_data
 
 
+@handle_db_errors
 def matches(row, where_clause):
     return all(
         name in row and type(row[name]) is type(value) and row[name] == value
@@ -124,12 +144,29 @@ def matches(row, where_clause):
     )
 
 
+_select_cache = create_cacher()
+
+
+@handle_db_errors
+@log_time
 def select(table_data, where_clause=None):
-    if where_clause is None:
-        return list(table_data)
-    return [row for row in table_data if matches(row, where_clause)]
+    # Снимок данных в ключе защищает от устаревших результатов после
+    # insert/update/delete, перезапуска таблицы и внешней правки JSON.
+    key = json.dumps([table_data, where_clause], sort_keys=True, ensure_ascii=False)
+
+    def calculate():
+        rows = (
+            table_data
+            if where_clause is None
+            else [row for row in table_data if matches(row, where_clause)]
+        )
+        return deepcopy(rows)
+
+    # Вызывающий код не может испортить сохранённый результат.
+    return deepcopy(_select_cache(key, calculate))
 
 
+@handle_db_errors
 def update(table_data, set_clause, where_clause):
     if "ID" in set_clause:
         raise ValueError("Некорректное значение: ID изменять нельзя.")
@@ -139,5 +176,7 @@ def update(table_data, set_clause, where_clause):
     ]
 
 
+@handle_db_errors
+@confirm_action("удаление записей")
 def delete(table_data, where_clause):
     return [row for row in table_data if not matches(row, where_clause)]

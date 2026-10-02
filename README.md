@@ -85,7 +85,7 @@ exit
 uv run ruff check .
 uv run python -m unittest discover -s tests -v
 uv build
-uvx twine check dist/primitive_db-0.4.0*
+uvx twine check dist/primitive_db-0.5.0*
 ```
 
 ## Запись демонстрации CRUD
@@ -98,7 +98,7 @@ uvx asciinema rec crud-demo.cast
 Внутри записи установите wheel и запустите программу:
 
 ```bash
-uv tool install --force dist/primitive_db-0.4.0-py3-none-any.whl
+uv tool install --force dist/primitive_db-0.5.0-py3-none-any.whl
 database
 ```
 
@@ -119,3 +119,79 @@ uvx asciinema upload crud-demo.cast
 а также проверка сохранения данных после перезапуска:
 
 [![Демонстрация CRUD](https://asciinema.org/a/ShWdKS4VfjsY9lMM.svg)](https://asciinema.org/a/ShWdKS4VfjsY9lMM)
+
+## Декораторы и замыкания
+
+Модуль `src/primitive_db/decorators.py` входит в устанавливаемый пакет.
+Во всех декораторах используется `functools.wraps`, чтобы сохранить имя,
+документацию и доступ к исходной функции через `__wrapped__`.
+
+- `handle_db_errors` обрабатывает `FileNotFoundError`, `KeyError`, `ValueError`,
+  ошибки файловой системы и другие исключения. При вложенных вызовах ошибка
+  доходит до внешней обёртки, которая печатает её ровно один раз и возвращает
+  маркер `DB_ERROR`. Это не позволяет продолжить запись после ошибки проверки.
+  `ContextVar` хранит глубину вложенных вызовов; `finally` восстанавливает её.
+- `confirm_action(action_name)` — фабрика декораторов. Перед `drop_table`
+  и `delete` запрашивает подтверждение. Только точный ответ `y` разрешает
+  операцию; любой другой ответ возвращает `CANCELLED`. Движок в этом случае
+  не сохраняет данные и не выводит сообщение об успешном удалении.
+- `log_time` измеряет `insert` и `select` через `time.monotonic()` и печатает
+  длительность с тремя знаками после точки, включая неуспешные вызовы.
+- `create_cacher()` возвращает функцию `cache_result(key, value_func)`.
+  Словарь находится в замыкании. Повторный ключ возвращает сохранённый результат,
+  не вызывая `value_func` повторно. Ошибки не кэшируются. При заполнении
+  256 записей кэш очищается; его также можно очистить методом `.clear()`.
+- `select` использует этот кэш. Ключ включает снимок текущих данных и условие,
+  поэтому после изменения таблицы старый результат не используется.
+  Результат возвращается как независимая копия. Файлы по-прежнему читаются,
+  и снимок сериализуется при каждом запросе: кэш экономит повторную фильтрацию,
+  но для маленьких таблиц ускорение не гарантируется. Он живёт только в памяти.
+
+Пример проверки (ответы `n` и `y` вводятся на запрос подтверждения):
+
+```text
+create_table final_demo name:str age:int
+insert into final_demo values ("Sergei", 28)
+select from final_demo
+select from final_demo
+update final_demo set age=29 where ID=1
+select from final_demo
+insert into final_demo values ("Bad", "wrong type")
+delete from final_demo where ID=1
+n
+select from final_demo
+delete from final_demo where ID=1
+y
+info final_demo
+drop_table final_demo
+n
+list_tables
+drop_table final_demo
+y
+exit
+```
+
+## Финальная запись
+
+```bash
+export ASCIINEMA_CONFIG_HOME="$HOME/.asciinema-config"
+uvx asciinema rec decorators-demo.cast
+uv tool install --force dist/primitive_db-0.5.0-py3-none-any.whl
+database
+```
+
+Выполните пример выше. После выхода из базы введите ещё один `exit`,
+чтобы завершить запись оболочки. Затем выполните:
+
+```bash
+uvx asciinema upload decorators-demo.cast
+```
+
+Добавьте ссылку на опубликованную финальную запись в README.
+
+## Демонстрация декораторов и замыканий
+
+Обработка ошибок, замер времени, повторные запросы,
+отмена и подтверждение удаления:
+
+[![Финальная демонстрация](https://asciinema.org/a/VFTA3f86vF4odhhB.svg)](https://asciinema.org/a/VFTA3f86vF4odhhB)

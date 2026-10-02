@@ -13,6 +13,7 @@ from primitive_db.core import (
     validate_fields,
     validate_table_data,
 )
+from primitive_db.decorators import CANCELLED, DB_ERROR, handle_db_errors
 from primitive_db.parser import parse_command
 from primitive_db.utils import (
     delete_table_data,
@@ -40,7 +41,7 @@ def print_help():
     print("info <таблица> — информация о таблице")
     print("help — справка; exit — выход")
     print('Типы: int, str, bool. Строки в кавычках: "Sergei"; bool: true/false.')
-    print("ID генерируется автоматически.\n")
+    print("ID генерируется автоматически. Удаление требует подтверждения y.\n")
 
 
 def print_rows(schema, rows):
@@ -53,6 +54,7 @@ def print_rows(schema, rows):
         print("Записи не найдены.")
 
 
+@handle_db_errors
 def execute(metadata, parsed):
     command, table_name, values, condition = parsed
     if command == "help":
@@ -70,7 +72,10 @@ def execute(metadata, parsed):
         print(f'Таблица "{table_name}" успешно создана со столбцами: {columns}')
         return
     if command == "drop_table":
+        get_schema(metadata, table_name)
         changed = drop_table(dict(metadata), table_name)
+        if changed is CANCELLED:
+            return CANCELLED
         delete_table_data(table_name)
         save_metadata(METADATA_FILE, changed)
         print(f'Таблица "{table_name}" успешно удалена.')
@@ -105,33 +110,40 @@ def execute(metadata, parsed):
         else:
             changed = delete(table_data, condition)
             action = "удалена"
+        if changed is CANCELLED:
+            return CANCELLED
         save_table_data(table_name, changed)
         for row in affected:
             print(f"Запись с ID={row['ID']}: успешно {action} ({table_name}).")
 
 
+@handle_db_errors
+def process_command(metadata, user_input):
+    parsed = parse_command(user_input)
+    if parsed is None:
+        return None
+    if parsed[0] == "exit":
+        return "exit"
+    return execute(metadata, parsed)
+
+
+@handle_db_errors
+def read_metadata():
+    return load_metadata(METADATA_FILE)
+
+
 def run():
     print_help()
     while True:
-        try:
-            metadata = load_metadata(METADATA_FILE)
-        except (OSError, ValueError) as error:
-            print(f"Ошибка чтения метаданных: {error}")
+        metadata = read_metadata()
+        if metadata is DB_ERROR:
             return
         try:
             user_input = prompt.string("Введите команду: ")
+            result = process_command(metadata, user_input)
         except (EOFError, KeyboardInterrupt):
             print("\nДо свидания!")
             return
-        try:
-            parsed = parse_command(user_input)
-            if parsed is None:
-                continue
-            if parsed[0] == "exit":
-                print("До свидания!")
-                return
-            execute(metadata, parsed)
-        except ValueError as error:
-            print(f"{error} Попробуйте снова.")
-        except OSError as error:
-            print(f"Ошибка работы с файлом: {error}")
+        if result == "exit":
+            print("До свидания!")
+            return

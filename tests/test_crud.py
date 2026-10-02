@@ -6,15 +6,20 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from primitive_db.core import create_table, insert
-from primitive_db.engine import execute
+from primitive_db.decorators import DB_ERROR
+from primitive_db.engine import process_command
 from primitive_db.parser import parse_command, parse_set, parse_where
 from primitive_db.utils import load_metadata, load_table_data, save_table_data
 
 
 class CrudTests(unittest.TestCase):
     def setUp(self):
+        confirmation = patch("builtins.input", return_value="y")
+        confirmation.start()
+        self.addCleanup(confirmation.stop)
         self.previous = Path.cwd()
         self.directory = tempfile.TemporaryDirectory()
         os.chdir(self.directory.name)
@@ -25,7 +30,7 @@ class CrudTests(unittest.TestCase):
 
     def command(self, text):
         with contextlib.redirect_stdout(io.StringIO()) as output:
-            execute(load_metadata("db_meta.json"), parse_command(text))
+            self.last_result = process_command(load_metadata("db_meta.json"), text)
         return output.getvalue()
 
     def create_users(self):
@@ -83,8 +88,8 @@ class CrudTests(unittest.TestCase):
             'insert into users values ("unterminated, 2, true)',
         ]:
             with self.subTest(command=command):
-                with self.assertRaises(ValueError):
-                    self.command(command)
+                self.command(command)
+                self.assertIs(self.last_result, DB_ERROR)
                 self.assertEqual(Path("data/users.json").read_bytes(), before)
 
     def test_ids_after_deletion(self):
@@ -117,14 +122,14 @@ class CrudTests(unittest.TestCase):
         self.assertEqual(load_table_data("absent"), [])
         self.create_users()
         Path("data/users.json").write_text("{bad json")
-        with self.assertRaises(ValueError):
-            self.command('insert into users values ("A", 1, true)')
+        self.command('insert into users values ("A", 1, true)')
+        self.assertIs(self.last_result, DB_ERROR)
         self.assertEqual(Path("data/users.json").read_text(), "{bad json")
-        with self.assertRaises(ValueError):
-            self.command("info missing")
+        self.command("info missing")
+        self.assertIs(self.last_result, DB_ERROR)
         save_table_data("users", [{"ID": 1}])
-        with self.assertRaises(ValueError):
-            self.command("select from users")
+        self.command("select from users")
+        self.assertIs(self.last_result, DB_ERROR)
 
     def test_insert_signature_and_id_only_table(self):
         metadata = create_table({}, "ids", ["ID:int"])
