@@ -1,6 +1,7 @@
 import prompt
 from prettytable import PrettyTable
 
+from primitive_db.constants import CANCELLED, DB_ERROR, ID_COLUMN, META_FILE
 from primitive_db.core import (
     create_table,
     delete,
@@ -13,7 +14,7 @@ from primitive_db.core import (
     validate_fields,
     validate_table_data,
 )
-from primitive_db.decorators import CANCELLED, DB_ERROR, handle_db_errors
+from primitive_db.decorators import handle_db_errors
 from primitive_db.parser import parse_command
 from primitive_db.utils import (
     delete_table_data,
@@ -23,10 +24,9 @@ from primitive_db.utils import (
     save_table_data,
 )
 
-METADATA_FILE = "db_meta.json"
-
 
 def print_help():
+    """Выводит синтаксис поддерживаемых команд."""
     print("\n***База данных: таблицы и операции с данными***\n")
     print("create_table <таблица> <столбец:тип> ... — создать таблицу")
     print("list_tables — показать таблицы")
@@ -45,6 +45,7 @@ def print_help():
 
 
 def print_rows(schema, rows):
+    """Печатает записи в порядке столбцов схемы через PrettyTable."""
     table = PrettyTable()
     table.field_names = list(schema)
     for row in rows:
@@ -56,6 +57,7 @@ def print_rows(schema, rows):
 
 @handle_db_errors
 def execute(metadata, parsed):
+    """Выполняет разобранную команду и сохраняет успешные изменения."""
     command, table_name, values, condition = parsed
     if command == "help":
         print_help()
@@ -67,7 +69,7 @@ def execute(metadata, parsed):
     if command == "create_table":
         changed = create_table(dict(metadata), table_name, values)
         save_table_data(table_name, [])
-        save_metadata(METADATA_FILE, changed)
+        save_metadata(META_FILE, changed)
         columns = ", ".join(changed[table_name])
         print(f'Таблица "{table_name}" успешно создана со столбцами: {columns}')
         return
@@ -77,7 +79,7 @@ def execute(metadata, parsed):
         if changed is CANCELLED:
             return CANCELLED
         delete_table_data(table_name)
-        save_metadata(METADATA_FILE, changed)
+        save_metadata(META_FILE, changed)
         print(f'Таблица "{table_name}" успешно удалена.')
         return
 
@@ -90,7 +92,10 @@ def execute(metadata, parsed):
     if command == "insert":
         changed = insert(metadata, table_name, values)
         save_table_data(table_name, changed)
-        print(f'Запись с ID={changed[-1]["ID"]} добавлена в таблицу "{table_name}".')
+        print(
+            f"Запись с ID={changed[-1][ID_COLUMN]} успешно добавлена "
+            f'в таблицу "{table_name}".'
+        )
     elif command == "select":
         print_rows(schema, select(table_data, condition))
     elif command == "info":
@@ -106,19 +111,27 @@ def execute(metadata, parsed):
             return
         if command == "update":
             changed = update(table_data, values, condition)
-            action = "обновлена"
         else:
             changed = delete(table_data, condition)
-            action = "удалена"
         if changed is CANCELLED:
             return CANCELLED
         save_table_data(table_name, changed)
         for row in affected:
-            print(f"Запись с ID={row['ID']}: успешно {action} ({table_name}).")
+            if command == "update":
+                print(
+                    f'Запись с ID={row[ID_COLUMN]} в таблице "{table_name}" '
+                    "успешно обновлена."
+                )
+            else:
+                print(
+                    f"Запись с ID={row['ID']} успешно удалена "
+                    f'из таблицы "{table_name}".'
+                )
 
 
 @handle_db_errors
 def process_command(metadata, user_input):
+    """Разбирает ввод и передаёт команду обработчику."""
     parsed = parse_command(user_input)
     if parsed is None:
         return None
@@ -129,10 +142,12 @@ def process_command(metadata, user_input):
 
 @handle_db_errors
 def read_metadata():
-    return load_metadata(METADATA_FILE)
+    """Читает метаданные с централизованной обработкой ошибок."""
+    return load_metadata(META_FILE)
 
 
 def run():
+    """Выполняет команды до выхода пользователя или ошибки чтения схемы."""
     print_help()
     while True:
         metadata = read_metadata()
